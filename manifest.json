@@ -1,0 +1,16 @@
+{
+  "name": "Plata que se va",
+  "short_name": "Gastos",
+  "description": "Mis gastos reales, separados de la plata que solo cambia de lugar.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E1413",
+  "theme_color": "#0E1413",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
