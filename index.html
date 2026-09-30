@@ -167,7 +167,13 @@ img{max-width:100%}
   <p>Pegá el ID de tu planilla. Es el pedazo largo que aparece en la URL del Sheet, entre <code>/d/</code> y <code>/edit</code>.</p>
   <input class="inp" id="inpSheet" placeholder="1AbC...xyz" autocomplete="off" spellcheck="false">
   <button class="btn" id="btnSheet">Guardar</button>
-  <p class="pie">Se guarda solo en este teléfono. No viaja a ningún servidor, y no está en el código de la app.</p>
+  <div class="aviso" id="noGuarda" hidden>
+    Este navegador no está guardando datos — puede ser una pestaña privada
+    o la prevención de rastreo de Safari. Igual va a funcionar: al guardar,
+    el ID queda en la dirección, así que agregá <b>esa</b> dirección a la
+    pantalla de inicio y no te lo vuelve a pedir.
+  </div>
+  <p class="pie">Se guarda en este teléfono y en la dirección de la página. No viaja a ningún servidor, y no está en el código de la app.</p>
 </div>
 
 <!-- ===== 2. INGRESO ===== -->
@@ -261,9 +267,49 @@ img{max-width:100%}
   }
 
   // ================= arranque =================
+
+  /**
+   * El id tambien puede venir en la URL: .../Gastos/#s=1AbC...
+   * Existe porque en iPhone el almacenamiento del navegador no siempre
+   * sobrevive: en pestaña privada no guarda nada, el icono de la
+   * pantalla de inicio tiene su propio contenedor separado de Safari, y
+   * la prevencion de rastreo borra datos de sitios poco visitados.
+   * Con el id en la URL, el acceso directo lo lleva puesto y la app
+   * arranca configurada aunque el almacenamiento se haya vaciado.
+   */
+  function idDesdeURL() {
+    var h = String(location.hash || '').replace(/^#/, '');
+    var m = h.match(/(?:^|&)s=([a-zA-Z0-9\-_]{20,})/);
+    return m ? m[1] : null;
+  }
+
+  /** ¿Este navegador realmente guarda lo que le pedimos? */
+  function guardaBien() {
+    try {
+      localStorage.setItem('__p', '1');
+      var ok = localStorage.getItem('__p') === '1';
+      localStorage.removeItem('__p');
+      return ok;
+    } catch (e) { return false; }
+  }
+
   function iniciar() {
-    estado.sheetId = LS.get('sheetId');
-    if (!estado.sheetId) { mostrar('pConfig'); $('inpSheet').focus(); return; }
+    var idUrl = idDesdeURL();
+    if (idUrl) { LS.set('sheetId', idUrl); estado.sheetId = idUrl; }
+    else estado.sheetId = LS.get('sheetId');
+
+    if (!estado.sheetId) {
+      if (!guardaBien()) {
+        $('noGuarda').hidden = false;
+      }
+      mostrar('pConfig'); $('inpSheet').focus(); return;
+    }
+
+    // Que la URL lleve el id: si desde acá lo agregás a la pantalla de
+    // inicio, el acceso directo queda configurado para siempre.
+    if (!idUrl) {
+      try { history.replaceState(null, '', '#s=' + estado.sheetId); } catch (e) {}
+    }
 
     var t = LS.get('token'), e = Number(LS.get('exp') || 0);
     if (t && e > Date.now() + 60000) { estado.token = t; estado.exp = e; }
@@ -295,15 +341,17 @@ img{max-width:100%}
     LS.set('sheetId', v);
     estado.sheetId = v;
     LS.del('filas');
+    try { history.replaceState(null, '', '#s=' + v); } catch (e) {}
     mostrar('pLogin');
   });
   $('inpSheet').addEventListener('keydown', function (ev) {
     if (ev.key === 'Enter') $('btnSheet').click();
   });
   $('btnOtroSheet').addEventListener('click', function () {
-    LS.del('sheetId'); LS.del('filas');
+    LS.del('sheetId'); LS.del('filas'); LS.del('ts');
     estado.sheetId = null; estado.filas = null;
     $('inpSheet').value = '';
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
     mostrar('pConfig');
   });
 
