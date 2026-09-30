@@ -75,6 +75,9 @@ img{max-width:100%}
 .iconbtn:active{background:var(--surface-2)}
 .iconbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .spin{animation:gira 1s linear infinite}
+.sello{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--line-2);padding:3px 7px;border-radius:999px;white-space:nowrap}
+.sello.viejo{color:var(--second);border-color:var(--second)}
 @keyframes gira{to{transform:rotate(360deg)}}
 
 /* ---------- tarjetas ---------- */
@@ -181,7 +184,10 @@ img{max-width:100%}
 
   <div class="top">
     <div class="brand">Plata que se va</div>
-    <button class="iconbtn" id="btnRef" title="Actualizar" aria-label="Actualizar">&#8635;</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="sello" id="sello"></span>
+      <button class="iconbtn" id="btnRef" title="Actualizar" aria-label="Actualizar">&#8635;</button>
+    </div>
   </div>
 
   <div class="aviso" id="appErr" hidden></div>
@@ -332,18 +338,55 @@ img{max-width:100%}
   }
 
   $('btnLogin').addEventListener('click', function () {
-    var c = clienteToken();
-    if (!c) {
-      $('loginErr').textContent = 'Todavía está cargando Google. Probá de nuevo en un segundo.';
-      $('loginErr').hidden = false;
-      return;
-    }
-    c.requestAccessToken({ prompt: 'consent' });
+    $('loginErr').hidden = true;
+    conGIS(function (listo) {
+      if (!listo) {
+        $('loginErr').textContent = 'No se pudo cargar Google. Revisá la conexión y reintentá.';
+        $('loginErr').hidden = false;
+        return;
+      }
+      clienteToken().requestAccessToken({ prompt: 'consent' });
+    });
   });
 
+  /**
+   * La libreria de Google se carga con "async defer", asi que cuando
+   * arranca la app puede no estar lista todavia. Antes se probaba una
+   * sola vez y, si no estaba, no pasaba nada: ni renovacion, ni
+   * reintento, ni error. La app mostraba la copia guardada como si
+   * fuera lo ultimo. Ahora se espera hasta 10 segundos y, si aun asi
+   * no aparece, se avisa en pantalla.
+   */
+  function conGIS(cb, intentos) {
+    intentos = intentos || 0;
+    if (window.google && google.accounts && google.accounts.oauth2) { cb(true); return; }
+    if (intentos > 40) { cb(false); return; }
+    setTimeout(function () { conGIS(cb, intentos + 1); }, 250);
+  }
+
   function intentarSilencioso() {
-    var c = clienteToken();
-    if (c) c.requestAccessToken({ prompt: '' });
+    conGIS(function (listo) {
+      if (!listo) {
+        avisar('No se pudo contactar a Google para renovar la sesion. ' +
+               'Probá de nuevo con el botón de actualizar.');
+        return;
+      }
+      var c = clienteToken();
+      if (c) c.requestAccessToken({ prompt: '' });
+    });
+  }
+
+  /** Aviso visible cuando lo que se ve puede no ser lo ultimo. */
+  function avisar(msg) {
+    if (estado.filas) {
+      $('appErr').textContent = msg;
+      $('appErr').hidden = false;
+      pintarSello();
+    } else {
+      $('loginErr').textContent = msg;
+      $('loginErr').hidden = false;
+      mostrar('pLogin');
+    }
   }
 
   // ================= datos =================
@@ -376,20 +419,14 @@ img{max-width:100%}
         if (v.length < 2) throw { msg: 'La hoja "' + HOJA + '" está vacía.' };
         estado.filas = v;
         LS.set('filas', JSON.stringify(v));
+        LS.set('ts', String(Date.now()));
         $('appErr').hidden = true;
         pintar();
       })
       .catch(function (err) {
         if (err && err.suave) { intentarSilencioso(); return; }
         var msg = (err && err.msg) ? err.msg : 'No se pudieron traer los datos.';
-        if (estado.filas) {
-          $('appErr').textContent = msg + ' Estás viendo la última copia guardada.';
-          $('appErr').hidden = false;
-        } else {
-          $('loginErr').textContent = msg;
-          $('loginErr').hidden = false;
-          mostrar('pLogin');
-        }
+        avisar(msg + (estado.filas ? ' Estás viendo la última copia guardada.' : ''));
       })
       .then(function () {
         estado.cargando = false;
@@ -442,6 +479,28 @@ img{max-width:100%}
   }
 
   // ================= dibujo =================
+
+  /**
+   * Cuanto hace que se leyo el Sheet. Existe porque la app guarda una
+   * copia local para abrir rapido, y sin esto no habria forma de
+   * distinguir datos de hace un minuto de datos de hace una semana.
+   */
+  function pintarSello() {
+    var ts = Number(LS.get('ts') || 0);
+    var el = $('sello');
+    if (!ts) { el.textContent = ''; el.className = 'sello'; return; }
+
+    var min = Math.round((Date.now() - ts) / 60000);
+    var txt, viejo = false;
+    if (min < 2) txt = 'recién';
+    else if (min < 60) txt = 'hace ' + min + ' min';
+    else if (min < 60 * 24) { txt = 'hace ' + Math.round(min / 60) + ' h'; viejo = min > 60 * 12; }
+    else { txt = 'hace ' + Math.round(min / 1440) + ' d'; viejo = true; }
+
+    el.textContent = txt;
+    el.className = 'sello' + (viejo ? ' viejo' : '');
+  }
+
   function pintar() {
     var m = armar();
     if (!m.orden.length) {
@@ -461,6 +520,7 @@ img{max-width:100%}
     pintarMes(m.meses[estado.mesSel]);
     pintarClases(m);
 
+    pintarSello();
     $('pie').textContent = m.total + ' movimientos leídos de la hoja "' + HOJA +
       '". Los importes en dólares se cuentan solo cuando su mes tiene tipo de cambio cargado.';
   }
